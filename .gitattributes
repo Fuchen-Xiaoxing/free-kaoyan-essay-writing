@@ -1,0 +1,17 @@
+# Set default behavior to automatically normalize line endings
+* text=auto eol=lf
+
+# Force specific text files to LF
+*.py text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+
+# Explicit binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

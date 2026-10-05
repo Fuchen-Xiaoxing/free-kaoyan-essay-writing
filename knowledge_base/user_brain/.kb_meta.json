@@ -1,0 +1,7 @@
+{
+  "version": "2.0.0",
+  "scaffold": "clean-factory-white-slate",
+  "clean_factory": true,
+  "decoupled_seeds": true,
+  "task": "task2"
+}
