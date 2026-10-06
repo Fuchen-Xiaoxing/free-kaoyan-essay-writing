@@ -27,11 +27,19 @@
   - `Volatile job market conditions and escalating competitive pressures frequently plunge young graduates into acute career dilemmas.`
   - 采用无生命主语（市场状况与竞争压力）配合高能动词 `plunge... into...`（使陷入），论证高度瞬间拔升。
 
+### 3. 难度适度降阶与考纲核心动词库（Reachable High-Impact Verbs）
+高级版绝非生僻晦涩大词的堆砌。考研高分的核心是**“用熟词写出学术张力”**。严禁在学员作文中密集引入 `discrepancy`, `sluggish`, `hindrance` 等易引起认知负担的高冷外刊词。优先选用考研大纲 5500 核心词内的高能承重动词：
+- **增长与突破**：`surge`, `climb`, `boom`, `expand`, `accelerate`（替代平淡的 `increase a lot`）
+- **驱动与促进**：`drive`, `boost`, `propel`, `fuel`, `foster`, `stimulate`（替代虚弱的 `make sth. better`）
+- **阻碍与制约**：`curb`, `hinder`, `restrict`, `dampen`, `pose an obstacle to`（替代 `have bad influence on`）
+- **经济与可及**：`afford`, `make sth. affordable`, `lower overhead / production costs`（替代中式直译）
+- **单句长度基准**：控制在 16~22 词，层次清晰，让考生在考场上能够自主复现与默写。
+
 ---
 
-## 二、三大典型语法与思维病灶深度透视
+## 二、四大典型语法与思维病灶深度透视
 
-私教在阶段 1 的【基础版逐句诊断】中，必须精准点穴，指出以下三大病灶并提供三步重构：
+私教在阶段 1 批改与阶段 2 升级中，必须精准点穴，指出以下病灶并提供重构方法：
 
 ### 病灶 1：系表贫血综合征（Copula Anemia）
 - **病态表现**：段落中连续出现 3 个以上的 `be / become / seem`，大量使用 `is very good / is very important / is harmful`。
@@ -58,6 +66,14 @@
     - `innovation` ➔ `spur technological innovation in public services`
     - `cooperation` ➔ `forge interdisciplinary collaboration among researchers`
     - `culture` ➔ `reconnect with cultural roots through heritage education`
+
+### 病灶 4：生硬拼贴与不合理套路（Grafting Mismatch & Awkward Templates）
+- **病态表现**：为硬往外部范文贴，强行嫁接不契合自身论点的句式（如在不对称的主辅对比中强套 `On the one hand... On the other hand`，导致一边 4 句一边 1 句的严重失衡；或为了套用范文原句生搬硬套不合语境的抽象词汇）。
+- **病因分析**：误将“照搬外部范文”当成高分捷径，破坏了自身基础版已确立的论述逻辑。
+- **重构方法**：
+  - ① 确立**基础版有机升级**定位：高分版必须从基础版的论述内容出发进行润色；
+  - ② 顺应真实论证逻辑：对等两面并列才用对称框架；主辅对比（如 2010 英二重点讲发展中国家爆发，发达国家仅作背景对照）直接用 `By contrast / In comparison`，主次分明自然；
+  - ③ 改掉基础版的不合理与粗糙之处，而非强行引入外部套路制造新的不合理。
 
 ---
 
