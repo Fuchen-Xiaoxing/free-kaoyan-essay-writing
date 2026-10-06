@@ -1189,20 +1189,65 @@ class TestKBManager(unittest.TestCase):
         - 英语一：180-210 词 PASS；< 160 词 FAIL；160-179 词 WARN
         - 英语二：160-180 词 PASS；< 150 词 FAIL；150-159 词 WARN
         """
-        short_essay = (
-            "    Paragraph one describing the chart briefly with essential background details.\n\n"
-            "    Paragraph two analyzing reasons with simple causal sentences and examples.\n\n"
-            "    Paragraph three concluding with sound policies and recommendations."
-        )
-        res_e1 = self.run_cmd(["check-essay", "--text", short_essay, "--exam-type", "1", "--json"])
-        d1 = json.loads(res_e1.stdout)
-        self.assertEqual(d1["word_count_status"], "FAIL")
-        self.assertIn("严重字数不足", d1["word_count_desc"])
+        # 140 词
+        p1 = "    " + "word " * 34 + "end."
+        p2 = "    " + "word " * 79 + "end."
+        p3 = "    " + "word " * 24 + "end."
+        essay_140 = f"{p1}\n\n{p2}\n\n{p3}"
 
-        res_e2 = self.run_cmd(["check-essay", "--text", short_essay, "--exam-type", "2", "--json"])
-        d2 = json.loads(res_e2.stdout)
-        self.assertEqual(d2["word_count_status"], "FAIL")
-        self.assertIn("严重字数不足", d2["word_count_desc"])
+        # 155 词
+        p1 = "    " + "word " * 34 + "end."
+        p2 = "    " + "word " * 89 + "end."
+        p3 = "    " + "word " * 29 + "end."
+        essay_155 = f"{p1}\n\n{p2}\n\n{p3}"
+
+        # 175 词
+        p1 = "    " + "word " * 39 + "end."
+        p2 = "    " + "word " * 99 + "end."
+        p3 = "    " + "word " * 34 + "end."
+        essay_175 = f"{p1}\n\n{p2}\n\n{p3}"
+
+        # 195 词
+        p1 = "    " + "word " * 44 + "end."
+        p2 = "    " + "word " * 109 + "end."
+        p3 = "    " + "word " * 39 + "end."
+        essay_195 = f"{p1}\n\n{p2}\n\n{p3}"
+
+        # 1) 140 词判定：英一英二皆 FAIL，但大纲底线描述不同
+        d_e1_140 = json.loads(self.run_cmd(["check-essay", "--text", essay_140, "--exam-type", "1", "--json"]).stdout)
+        self.assertEqual(d_e1_140["word_count_status"], "FAIL")
+        self.assertIn("不足英一大纲最低 160 词下限", d_e1_140["word_count_desc"])
+
+        d_e2_140 = json.loads(self.run_cmd(["check-essay", "--text", essay_140, "--exam-type", "2", "--json"]).stdout)
+        self.assertEqual(d_e2_140["word_count_status"], "FAIL")
+        self.assertIn("不足英二大纲最低 150 词下限", d_e2_140["word_count_desc"])
+
+        # 2) 155 词判定：英一 FAIL (<160)，英二 WARN (150-159)
+        d_e1_155 = json.loads(self.run_cmd(["check-essay", "--text", essay_155, "--exam-type", "1", "--json"]).stdout)
+        self.assertEqual(d_e1_155["word_count_status"], "FAIL")
+        self.assertIn("不足英一大纲最低 160 词下限", d_e1_155["word_count_desc"])
+
+        d_e2_155 = json.loads(self.run_cmd(["check-essay", "--text", essay_155, "--exam-type", "2", "--json"]).stdout)
+        self.assertEqual(d_e2_155["word_count_status"], "WARN")
+        self.assertIn("大纲底线 150 词", d_e2_155["word_count_desc"])
+
+        # 3) 175 词判定：英一 WARN (160-179)，英二 PASS (160-180 黄金区间)
+        d_e1_175 = json.loads(self.run_cmd(["check-essay", "--text", essay_175, "--exam-type", "1", "--json"]).stdout)
+        self.assertEqual(d_e1_175["word_count_status"], "WARN")
+        self.assertIn("大纲底线 160 词", d_e1_175["word_count_desc"])
+
+        d_e2_175 = json.loads(self.run_cmd(["check-essay", "--text", essay_175, "--exam-type", "2", "--json"]).stdout)
+        self.assertEqual(d_e2_175["word_count_status"], "PASS")
+        self.assertIn("处于英二 160~180 词黄金安全区间", d_e2_175["word_count_desc"])
+
+        # 4) 195 词判定：英一 PASS (180-210 黄金区间)，英二 WARN (>180 偏多)
+        d_e1_195 = json.loads(self.run_cmd(["check-essay", "--text", essay_195, "--exam-type", "1", "--json"]).stdout)
+        self.assertEqual(d_e1_195["word_count_status"], "PASS")
+        self.assertIn("处于英一 180~210 词黄金安全区间", d_e1_195["word_count_desc"])
+
+        d_e2_195 = json.loads(self.run_cmd(["check-essay", "--text", essay_195, "--exam-type", "2", "--json"]).stdout)
+        self.assertEqual(d_e2_195["word_count_status"], "WARN")
+        self.assertIn("略超 180 词", d_e2_195["word_count_desc"])
 
     def test_42_user_shared_schema_is_verified_like_task2(self):
         """P1-4: a corrupt personal shared warehouse must fail verify (parity with task2)."""
@@ -1557,6 +1602,46 @@ class TestKBManager(unittest.TestCase):
             self.assertIn("[STATUS] [T1_LIB_SEN_001] 敢用 ➔ 稳定", res_upd.stdout)
             updated_t1 = [json.loads(line) for line in t1_file.read_text(encoding="utf-8").splitlines() if line.strip()]
             self.assertEqual(updated_t1[0]["mastery"], "稳定")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_51_task2_genre_scenario_isolation(self):
+        """P1-51: query --genre chart isolates practical writing scenarios (e.g. consumer rights, food safety)."""
+        temp_dir = tempfile.mkdtemp(prefix="test_genre_isolation_")
+        try:
+            env = self.init_isolated_brain(temp_dir)
+            shared_file = Path(temp_dir) / "user_brain" / "shared" / "morphemes.jsonl"
+            shared_file.parent.mkdir(parents=True, exist_ok=True)
+            # 1. 模拟小作文专属维权语素
+            item_comp = {
+                "id": "M_TEST_COMP",
+                "category": "phrase",
+                "scenario": "消费者维权与售后",
+                "verb_phrase": "lodge a complaint",
+                "text": "lodge a complaint against defective products",
+                "intent": "针对劣质商品投诉",
+                "mastery": "稳定"
+            }
+            # 2. 模拟大作文图表契合的科技语素
+            item_chart = {
+                "id": "M_TEST_CHART",
+                "category": "phrase",
+                "scenario": "科技创新与数字生活",
+                "verb_phrase": "witness rapid proliferation",
+                "text": "witness rapid proliferation of mobile devices",
+                "intent": "见证移动设备快速普及",
+                "mastery": "稳定"
+            }
+            shared_file.write_text(
+                json.dumps(item_comp, ensure_ascii=False) + "\n" +
+                json.dumps(item_chart, ensure_ascii=False) + "\n",
+                encoding="utf-8"
+            )
+
+            res = self.run_cmd(["query", "--genre", "chart", "--limit", "5"], env=env)
+            self.assertEqual(res.returncode, 0)
+            self.assertIn("M_TEST_CHART", res.stdout, "Chart-compatible scenario must be included")
+            self.assertNotIn("M_TEST_COMP", res.stdout, "Consumer rights scenario must be filtered out for chart genre")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

@@ -159,7 +159,10 @@ GENRE_TO_SCENARIOS = {
     "application": ["求职实习与学术引荐", "志愿服务与校园公益"],
     "notice": ["校园文体、学术讲座与国际研讨会", "志愿服务与校园公益", "图书馆与学习环境"],
     "minutes": ["校园文体、学术讲座与国际研讨会", "志愿服务与校园公益"],
-    "reply_letter": ["文化交流与文旅推荐", "校园文体、学术讲座与国际研讨会", "求职实习与学术引荐"]
+    "reply_letter": ["文化交流与文旅推荐", "校园文体、学术讲座与国际研讨会", "求职实习与学术引荐"],
+    "chart": ["科技创新与数字生活", "生态文明与绿色低碳", "求职与职业发展", "求职实习与职业规划", "通用素材与综合场景", "学习与学术科研", "文化交流与文旅体验"],
+    "drawing": ["文化交流与文旅体验", "文化交流与文旅推荐", "独立生活与个人修养", "生态文明与绿色低碳", "科技创新与数字生活", "通用素材与综合场景", "学习与学术科研", "志愿服务与社会公益", "志愿服务与校园公益"],
+    "material": ["独立生活与个人修养", "学习与学术科研", "科技创新与数字生活", "生态文明与绿色低碳", "通用素材与综合场景", "文化交流与文旅体验"]
 }
 
 MASTERY_RANK = {
@@ -2701,7 +2704,14 @@ def cmd_check_essay(args):
     # 6. 卷别动态词数安全判定
     exam_type_raw = getattr(args, "exam_type", "1") or "1"
     exam_type_norm = normalize_exam_type(exam_type_raw)
-    is_eng1 = "I" in exam_type_norm or "1" in str(exam_type_raw)
+    raw_str = str(exam_type_raw).strip().lower()
+    is_eng2 = (
+        exam_type_norm == "English II"
+        or raw_str in ("2", "ii", "english ii", "eng2", "english2", "english 2", "英二", "英语二", "考研英语二")
+        or "2" in raw_str
+        or "二" in raw_str
+    )
+    is_eng1 = not is_eng2
 
     wc_status = "PASS"
     body_words = sum(p_counts)
