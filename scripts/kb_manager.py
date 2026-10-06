@@ -55,14 +55,30 @@ VALID_TASK2_CARRIERS = ["drawing", "chart", "material", "general"]
 VALID_TASK2_THEMES = list(THEME_CODE_MAP.keys())
 
 SCENARIO_CODE_MAP = {
+    # Task 1 scenarios & aliases
     "图书馆与学习环境": "LIB",
+    "校园文体与学术交流": "ACT",
     "校园文体、学术讲座与国际研讨会": "ACT",
     "志愿服务与校园公益": "VOL",
     "消费者维权与售后": "CON",
     "餐饮卫生与食品安全": "FOOD",
+    "求职与职业发展": "JOB",
+    "文化交流与文旅体验": "CUL",
+    "通用素材与综合场景": "GEN",
+    # Task 2 scenarios & aliases
+    "学习与学术科研": "ACAD",
+    "求职实习与职业规划": "JOB",
     "求职实习与学术引荐": "JOB",
-    "文化交流与文旅推荐": "CUL"
+    "独立生活与个人修养": "LIFE",
+    "志愿服务与社会公益": "VOL",
+    "文化交流与文旅推荐": "CUL",
+    "文化交流与文化自信": "CUL",
+    "科技创新与人工智能": "TECH",
+    "科技创新与数字生活": "TECH",
+    "绿色生态与可持续发展": "ENV",
+    "生态文明与绿色低碳": "ENV"
 }
+
 
 # Genre / Carrier aliases for robust user/LLM input normalization
 GENRE_ALIASES = {
@@ -463,6 +479,7 @@ def get_paths(kb_dir: Path = None, base_kb_dir: Path = None, user_brain_dir: Pat
         # 个人外脑写入目标（v2 规范路径）
         "task2": t1_v2,
         "user_task2": t1_v2,
+        "user_task1": ub_sub / "task1" / "expressions.jsonl",
         "tasks": tasks_v2,
         "user_task2_tasks": tasks_v2,
         "user_shared": user_shared_path,
@@ -992,6 +1009,12 @@ def _query_mine(args, paths: dict):
     # 经 read_store 读取，兼容历史扁平布局（存量外脑不丢数据）
     records += read_store(paths, "user_task2")
     records += read_store(paths, "user_shared")
+    if paths.get("user_task1") and Path(paths["user_task1"]).exists():
+        t1_recs = read_jsonl(Path(paths["user_task1"]))
+        for tr in t1_recs:
+            tr_copy = dict(tr)
+            tr_copy.setdefault("genre", tr.get("genre") or "task1_practical")
+            records.append(tr_copy)
 
     draft_norm = ""
     match_file = getattr(args, "match_file", None)
@@ -1065,7 +1088,7 @@ def _query_mine(args, paths: dict):
 
     dump("【一、初稿已实际命中】(建议在【外脑连接】中原样引用)", hits)
     dump("【二、同文类可复用】", same_genre)
-    dump("【三、跨文类可复用】(他类信体积累的通用骨架，投诉/建议/道歉等可迁移)", cross_genre)
+    dump("【三、跨文类可复用】(含其他载体及小作文积累的通用表达，带 [跨文类复用] 标记)", cross_genre)
     if not hits:
         print("\n【提示】初稿未命中任何个人外脑资产，请如实说明，并从上面第二/三组中推荐 1~2 条建议激活项。")
 
@@ -1436,13 +1459,13 @@ def generate_item_id(target: str, item: dict, existing_records: list) -> str:
         code = GENRE_CODE_MAP.get(g, "GEN")
         cat = item.get("category") or item.get("type") or "functional_sentence"
         
-        prefix = f"T1_{code}_"
+        prefix = f"T2_{code}_"
         if cat == "template":
-            prefix = f"T1_{code}_TMP_"
+            prefix = f"T2_{code}_TMP_"
         elif cat == "structure":
-            prefix = f"T1_{code}_STR_"
+            prefix = f"T2_{code}_STR_"
         elif cat in ("functional_sentence", "sentence"):
-            prefix = f"T1_{code}_SEN_"
+            prefix = f"T2_{code}_SEN_"
 
         max_seq = 0
         for r in existing_records:
@@ -1491,9 +1514,9 @@ def cmd_append(args):
         sys.exit(1)
 
     items_to_add = new_data if isinstance(new_data, list) else [new_data]
-    target_path = paths[target]
-    if target == "shared" and not target_path.resolve().is_relative_to(paths["user_root"].resolve()):
-        target = "task2"
+    if target == "shared":
+        target_path = paths["user_shared"]
+    else:
         target_path = paths["task2"]
     current_records = read_jsonl(target_path)
 
@@ -1565,54 +1588,48 @@ def cmd_append(args):
 def cmd_batch_update(args):
     if getattr(args, "example", False):
         example_spec = {
-            "task_id": "T2011-E2-ADV",
+            "task_id": "T2021-E1-DRAW",
             "status_updates": [
                 {
-                    "id": "T1_ADV_001",
-                    "status": "敢用",
-                    "note": "本篇实战用对",
+                    "id": "T2_OVT_SEN_001",
+                    "status": "稳定",
+                    "note": "实战引申首段活用成功",
                     "independent": True
                 }
             ],
             "new_items": [
                 {
-                    "target": "task2",
+                    "target": "shared",
                     "data": {
                         "category": "phrase",
-                        "genre": "advice",
+                        "genre": "drawing",
                         "section": "body",
-                        "register": "neutral_formal",
-                        "intent": "提前接触、初步了解某领域（替代 learn about 的平铺表达）",
-                        "verb_phrase": "gain exposure to [field]",
-                        "expression": "gain exposure to [field]",
-                        "pattern": "it is never too early to gain exposure to [field]",
-                        "slots": {
-                            "[field]": "要提前接触的领域（专业/职场/文化等）"
-                        },
-                        "source": "2011英二建议信实战·高级版升华",
-                        "tags": ["建议信", "动词承重"],
+                        "register": "academic_formal",
+                        "intent": "焕发古老艺术生机与活力",
+                        "verb_phrase": "revitalize ancient art forms",
+                        "expression": "revitalize ancient art forms",
+                        "source": "2021英一图画作文实战·高级版升华",
+                        "tags": ["文化自信", "动词承重"],
                         "exam_band": "大纲内",
-                        "mastery": "学习中",
-                        "mastery_note": ""
+                        "mastery": "学习中"
                     }
                 },
                 {
                     "target": "task2",
                     "data": {
                         "category": "functional_sentence",
-                        "genre": "advice",
-                        "section": "body",
-                        "register": "neutral_formal",
-                        "intent": "双重否定式强调：推动对方尽早采取行动并给出收益",
-                        "expression": "It is never too early to [action], which will undoubtedly help you [benefit].",
+                        "genre": "drawing",
+                        "section": "opening",
+                        "register": "academic_formal",
+                        "intent": "揭示画面深层时代弦外之音",
+                        "expression": "Evidently, this subtle visual narrative takes on a profound overtone of [Theme] amid the contemporary epoch.",
                         "slots": {
-                            "[action]": "尽早该做的动作（动词短语）",
-                            "[benefit]": "预期益处（动词短语）"
+                            "[Theme]": "核心母题或社会议题抽象名词"
                         },
-                        "source": "2011英二建议信实战·高级版升华",
-                        "tags": ["建议信", "功能句"],
+                        "source": "2021英一图画作文实战·高级版升华",
+                        "tags": ["图画首段", "象征引申"],
                         "exam_band": "大纲内",
-                        "mastery": "学习中"
+                        "mastery": "敢用"
                     }
                 }
             ]
@@ -1746,6 +1763,21 @@ def cmd_batch_update(args):
                         shared_touched = True
                         updated_count += 1
                         break
+
+            # If not in shared, check user task1 (cross-task small essay expression)
+            if not found and paths.get("user_task1") and Path(paths["user_task1"]).exists():
+                t1_path = Path(paths["user_task1"])
+                t1_records = read_jsonl(t1_path)
+                t1_touched = False
+                for rec in t1_records:
+                    if is_id_match(rec.get("id"), t_id):
+                        apply_status_rec(rec, t_id)
+                        found = True
+                        t1_touched = True
+                        updated_count += 1
+                        break
+                if t1_touched:
+                    write_jsonl(t1_path, t1_records)
 
             # If not found in user brain, check seed task2 (promote to user task2)
             if not found and seed_t1_records:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-maimemo_sync.py - MaiMemo (墨墨背单词) Sync Engine for Kaoyan Practical Writing
+maimemo_sync.py - MaiMemo (墨墨背单词) Sync Engine for Kaoyan Essay Writing (Section B · 论说文)
 
 Tailored and self-contained specifically for kaoyan writing vocabulary retention:
   1. Resolves vocabulary IDs via POST /vocabulary/query
@@ -30,7 +30,7 @@ if sys.platform.startswith("win"):
 
 MAIMEMO_BASE_URL = "https://open.maimemo.com/open/api/v1"
 DEFAULT_NOTEPAD_TITLE = "我的考研作文"
-DEFAULT_NOTEPAD_BRIEF = "考研英语小作文实战生词与错词集"
+DEFAULT_NOTEPAD_BRIEF = "考研英语写作实战生词与错词集"
 
 # 官方频控契约（references/maimemo_api.md）：20 次/10 秒、40 次/60 秒、2000 次/5 小时
 RATE_LIMITS = ((20, 10.0), (40, 60.0), (2000, 5 * 3600.0))
@@ -177,7 +177,7 @@ def format_mnemonic_note(word_data: dict) -> str:
         parts.append(f"【原句语法剖析】：{grammar}")
 
     if not parts:
-        parts.append(f"【考研写作实战】：收录于考研小作文高分范文核心表达。")
+        parts.append(f"【考研写作实战】：收录于考研大作文高分范文核心表达。")
 
     return "\n".join(parts)
 
@@ -249,7 +249,7 @@ class MaimemoClient:
 
         if not self.token:
             raise ValueError(
-                "MAIMEMO_SPELLING_TOKEN 未设置！小作文实战需连接【背单词拼写专用账号】。\n"
+                "MAIMEMO_SPELLING_TOKEN 未设置！大作文实战需连接【背单词拼写专用账号】。\n"
                 "请配置环境变量 MAIMEMO_SPELLING_TOKEN 或通过 --token 传入。\n"
                 "获取方式：使用拼写背单词账号登录墨墨背单词 App → 设置 → 开放 API 或打开 https://open.maimemo.com/open/api/v1/tokens/openapi 复制 Token。"
             )
@@ -665,7 +665,7 @@ def sync_essay_vocabulary(payload: dict, token: str = None, mock: bool = False, 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MaiMemo Sync Engine for Kaoyan Practical Writing")
+    parser = argparse.ArgumentParser(description="MaiMemo Sync Engine for Kaoyan Essay Writing")
     parser.add_argument("--file", type=str, default=None, help="Path to JSON payload file")
     parser.add_argument("--token", type=str, default=None, help="MaiMemo API token (默认为环境变量 MAIMEMO_SPELLING_TOKEN)")
     parser.add_argument("--dry-run", action="store_true", help="Dry run without modifying remote MaiMemo data")

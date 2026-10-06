@@ -1432,6 +1432,134 @@ class TestKBManager(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_47_task2_id_prefix_generation(self):
+        """P1-47: appending task2 items must strictly generate T2_ prefixes (never T1_)."""
+        temp_dir = tempfile.mkdtemp(prefix="test_t2_prefix_")
+        try:
+            env = self.init_isolated_brain(temp_dir)
+            item_draw = {
+                "category": "functional_sentence",
+                "genre": "drawing",
+                "intent": "象征引申弦外之音",
+                "expression": "Evidently, this narrative takes on [Theme].",
+                "slots": {"[Theme]": "主题"},
+                "source": "实战",
+                "exam_band": "大纲内"
+            }
+            res1 = self.run_cmd(["append", "--target", "task2", "--data", json.dumps(item_draw, ensure_ascii=False)], env=env)
+            self.assertEqual(res1.returncode, 0)
+            self.assertIn("T2_DRAW_SEN_001", res1.stdout)
+            self.assertNotIn("T1_DRAW", res1.stdout)
+
+            item_chart = {
+                "category": "structure",
+                "genre": "chart",
+                "intent": "图表首段四要素",
+                "expression": "As shown in the [Chart], [Metric] surged.",
+                "slots": {"[Chart]": "图表", "[Metric]": "指标"},
+                "source": "实战",
+                "exam_band": "大纲内"
+            }
+            res2 = self.run_cmd(["append", "--target", "task2", "--data", json.dumps(item_chart, ensure_ascii=False)], env=env)
+            self.assertEqual(res2.returncode, 0)
+            self.assertIn("T2_CHART_STR_001", res2.stdout)
+            self.assertNotIn("T1_CHART", res2.stdout)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_48_shared_morpheme_scenario_mapping(self):
+        """P1-48: shared morphemes must correctly map Task 2 scenarios to proper codes (TECH, ENV, ACAD)."""
+        temp_dir = tempfile.mkdtemp(prefix="test_scenario_map_")
+        try:
+            env = self.init_isolated_brain(temp_dir)
+            tech_item = {
+                "category": "phrase",
+                "scenario": "科技创新与人工智能",
+                "verb_phrase": "leverage generative AI tools",
+                "expression": "leverage generative AI tools",
+                "meaning": "运用生成式人工智能",
+                "source": "实战"
+            }
+            res = self.run_cmd(["append", "--target", "shared", "--data", json.dumps(tech_item, ensure_ascii=False)], env=env)
+            self.assertEqual(res.returncode, 0)
+            self.assertIn("M_TECH_", res.stdout)
+            self.assertNotIn("M_SCENE_", res.stdout)
+
+            env_item = {
+                "category": "phrase",
+                "scenario": "绿色生态与可持续发展",
+                "verb_phrase": "accelerate green ecological transition",
+                "expression": "accelerate green ecological transition",
+                "meaning": "加速绿色生态转型",
+                "source": "实战"
+            }
+            res_env = self.run_cmd(["append", "--target", "shared", "--data", json.dumps(env_item, ensure_ascii=False)], env=env)
+            self.assertEqual(res_env.returncode, 0)
+            self.assertIn("M_ENV_", res_env.stdout)
+            self.assertNotIn("M_SCENE_", res_env.stdout)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_49_seed_shared_morphemes_integrity_and_no_collision(self):
+        """P1-49: verify full 59 shared morphemes integrity and zero ID collision."""
+        seed_file = KB_ROOT / "seeds" / "shared_morphemes.seed.jsonl"
+        self.assertTrue(seed_file.exists(), f"seed_shared not found: {seed_file}")
+        with open(seed_file, "r", encoding="utf-8") as f:
+            records = [json.loads(line) for line in f if line.strip()]
+        self.assertEqual(len(records), 59, f"expected 59 combined seeds, found {len(records)}")
+        ids = [r["id"] for r in records]
+        self.assertEqual(len(ids), len(set(ids)), "duplicate IDs found in seed_shared")
+        for r in records:
+            self.assertIn("task1", r.get("scope", []))
+            self.assertIn("task2", r.get("scope", []))
+
+    def test_50_cross_task_query_mine_and_batch_update(self):
+        """P1-50: query --mine recalls Task 1 assets as cross-genre and batch-update can promote them."""
+        temp_dir = tempfile.mkdtemp(prefix="test_cross_task_")
+        try:
+            env = self.init_isolated_brain(temp_dir)
+            t1_file = Path(temp_dir) / "user_brain" / "task1" / "expressions.jsonl"
+            t1_file.parent.mkdir(parents=True, exist_ok=True)
+            t1_record = {
+                "id": "T1_LIB_SEN_001",
+                "category": "functional_sentence",
+                "genre": "advice",
+                "section": "body",
+                "expression": "prolong opening hours during exam intervals",
+                "intent": "延长备考期间开馆时间",
+                "mastery": "敢用",
+                "version": 1
+            }
+            t1_file.write_text(json.dumps(t1_record, ensure_ascii=False) + "\n", encoding="utf-8")
+
+            # 1. query --mine recalls T1_LIB_SEN_001
+            res = self.run_cmd(["query", "--mine", "--genre", "drawing", "--json"], env=env)
+            self.assertEqual(res.returncode, 0)
+            data = json.loads(res.stdout)
+            found_ids = [x["id"] for x in data.get("cross_genre", []) + data.get("hits", [])]
+            self.assertIn("T1_LIB_SEN_001", found_ids, "Task 1 assets must be recalled as cross-genre")
+
+            # 2. batch-update promotes T1_LIB_SEN_001
+            batch_payload = {
+                "task_id": "T2021-E1-DRAW",
+                "status_updates": [
+                    {
+                        "id": "T1_LIB_SEN_001",
+                        "status": "稳定",
+                        "note": "大作文独立活用成功",
+                        "independent": True
+                    }
+                ],
+                "new_items": []
+            }
+            res_upd = self.run_cmd(["batch-update", "--data", json.dumps(batch_payload, ensure_ascii=False)], env=env)
+            self.assertEqual(res_upd.returncode, 0)
+            self.assertIn("[STATUS] [T1_LIB_SEN_001] 敢用 ➔ 稳定", res_upd.stdout)
+            updated_t1 = [json.loads(line) for line in t1_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(updated_t1[0]["mastery"], "稳定")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()
