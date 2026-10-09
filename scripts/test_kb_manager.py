@@ -62,7 +62,7 @@ else:
     KB_ROOT = REPO_ROOT / "knowledge_base"
 SCRIPT_PATH = SCRIPT_DIR / "kb_manager.py"
 sys.path.insert(0, str(SCRIPT_DIR))
-from kb_manager import is_id_match
+from kb_manager import is_id_match, check_admission_rules
 
 class TestKBManager(unittest.TestCase):
 
@@ -1645,9 +1645,143 @@ class TestKBManager(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_52_history_empty_and_populated(self):
+        """P1-52: history command correctly queries archived essays and absorbed assets."""
+        temp_dir = tempfile.mkdtemp(prefix="test_history_")
+        try:
+            env = self.init_isolated_brain(temp_dir)
+            # 1. 空库测试
+            res_empty = self.run_cmd(["history", "--limit", "1"], env=env)
+            self.assertEqual(res_empty.returncode, 0)
+            self.assertIn("暂无符合条件的已归档历史作文", res_empty.stdout)
+
+            # JSON 模式空库测试
+            res_json_empty = self.run_cmd(["history", "--json"], env=env)
+            self.assertEqual(res_json_empty.returncode, 0)
+            self.assertEqual(json.loads(res_json_empty.stdout), [])
+
+            # 2. 归档一篇测试大作文
+            essay_text = VALID_TASK2_ESSAY
+            metadata = {
+                "word_count": 182,
+                "absorbed_items": [
+                    "T2_OVT_SEN_001 [稳定] 画面深层弦外之音",
+                    "M_SCENE_024 [学习中] sharpen one's technological edge"
+                ]
+            }
+            res_arch = self.run_cmd([
+                "archive",
+                "--title", "京剧传统文化（2021英一）",
+                "--genre", "drawing",
+                "--year", "2021",
+                "--exam-type", "English I",
+                "--task-id", "T2021-E1-DRAW",
+                "--content", essay_text,
+                "--metadata", json.dumps(metadata, ensure_ascii=False)
+            ], env=env)
+            self.assertEqual(res_arch.returncode, 0)
+
+            # 3. 正常查询 history
+            res_hist = self.run_cmd(["history", "--limit", "1"], env=env)
+            self.assertEqual(res_hist.returncode, 0)
+            self.assertIn("=== 学员历史归档作文", res_hist.stdout)
+            self.assertIn("T2021-E1-DRAW", res_hist.stdout)
+            self.assertIn("京剧传统文化（2021英一）", res_hist.stdout)
+            self.assertIn("T2_OVT_SEN_001", res_hist.stdout)
+            self.assertIn("traditional Peking Opera costume", res_hist.stdout)
+
+            # 4. --brief 模式（不显示正文）
+            res_brief = self.run_cmd(["history", "--brief"], env=env)
+            self.assertEqual(res_brief.returncode, 0)
+            self.assertIn("T2021-E1-DRAW", res_brief.stdout)
+            self.assertNotIn("traditional Peking Opera costume", res_brief.stdout)
+
+            # 5. --genre 筛选
+            res_drawing = self.run_cmd(["history", "--genre", "drawing"], env=env)
+            self.assertEqual(res_drawing.returncode, 0)
+            self.assertIn("T2021-E1-DRAW", res_drawing.stdout)
+
+            res_chart = self.run_cmd(["history", "--genre", "chart"], env=env)
+            self.assertEqual(res_chart.returncode, 0)
+            self.assertIn("暂无符合条件的已归档历史作文", res_chart.stdout)
+
+            # 6. --json 格式化输出
+            res_json = self.run_cmd(["history", "--json"], env=env)
+            self.assertEqual(res_json.returncode, 0)
+            data = json.loads(res_json.stdout)
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["task_id"], "T2021-E1-DRAW")
+            self.assertEqual(len(data[0]["absorbed_items"]), 2)
+            self.assertIn("traditional Peking Opera", data[0]["essay_body"])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_53_exam_band_normalization(self):
+        """P1-53: check_admission_rules normalizes exam_band semantic aliases."""
+        base_item = {
+            "source": "T2021-E1 模拟实战",
+            "intent": "磨砺技术优势",
+            "category": "phrase",
+            "verb_phrase": "sharpen one's edge",
+            "expression": "sharpen one's edge"
+        }
+
+        # 1. 大纲内别名
+        for b in ["大纲内", "考纲核心", "大纲词汇", "core", "核心词汇"]:
+            item = dict(base_item)
+            item["exam_band"] = b
+            ok, msg = check_admission_rules(item)
+            self.assertTrue(ok, f"Failed for band {b}: {msg}")
+            self.assertEqual(item["exam_band"], "大纲内")
+
+        # 2. 超纲 / 中高阶别名
+        for b in ["超纲", "中高阶", "拔高", "高阶", "进阶", "大纲拓展", "拓展", "advanced"]:
+            item = dict(base_item)
+            item["exam_band"] = b
+            ok, msg = check_admission_rules(item)
+            self.assertTrue(ok, f"Failed for band {b}: {msg}")
+            self.assertEqual(item["exam_band"], "超纲")
+
+        # 3. 非法值仍被拒绝
+        item = dict(base_item)
+        item["exam_band"] = "invalid_band_xyz"
+        ok, msg = check_admission_rules(item)
+        self.assertFalse(ok)
+        self.assertIn("Invalid exam_band", msg)
+
+    def test_54_settle_example_contract(self):
+        """P1-54: settle --example adheres strictly to Task 2 academic essay standards."""
+        res = self.run_cmd(["settle", "--example"])
+        self.assertEqual(res.returncode, 0)
+        payload = json.loads(res.stdout)
+
+        # 验证是 Task 2 大作文
+        self.assertIn(payload.get("genre"), ["drawing", "chart", "material", "general"])
+        self.assertIn("essay_content", payload)
+        content = payload["essay_content"].lower()
+
+        # 严禁任何 Task 1 书信公文痕迹
+        self.assertNotIn("dear", content)
+        self.assertNotIn("yours faithfully", content)
+        self.assertNotIn("yours sincerely", content)
+        self.assertNotIn("zhang wei", content)
+        self.assertNotIn("li ming", content)
+
+        # 验证三段式结构
+        paras = [p.strip() for p in payload["essay_content"].split("\n\n") if p.strip()]
+        self.assertEqual(len(paras), 3, "Must be strictly 3 paragraphs")
+
+        # 验证 new_items 包含合规的 exam_band
+        new_items = payload["batch"]["new_items"]
+        for it in new_items:
+            band = it["data"].get("exam_band")
+            if band:
+                self.assertIn(band, ["大纲内", "超纲"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

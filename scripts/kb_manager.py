@@ -656,9 +656,12 @@ def check_admission_rules(item: dict) -> tuple[bool, str]:
 
     # 3. Exam band check
     band = str(item.get("exam_band", "大纲内")).strip()
-    if band in ("考纲核心", "大纲词汇", "核心词汇", "大纲", "core"):
+    if band in ("考纲核心", "大纲词汇", "核心词汇", "大纲", "core", "大纲内"):
         band = "大纲内"
         item["exam_band"] = "大纲内"
+    elif band in ("中高阶", "拔高", "高阶", "进阶", "大纲拓展", "拓展", "超纲", "advanced", "out_of_syllabus"):
+        band = "超纲"
+        item["exam_band"] = "超纲"
     if band not in ("大纲内", "超纲"):
         return False, f"Invalid exam_band: {band}. Must be '大纲内' or '超纲'"
 
@@ -2013,13 +2016,13 @@ def cmd_archive(args):
     if getattr(args, "example", False):
         print("""# 范文归档命令使用示例：
 python3 scripts/kb_manager.py archive \\
-  --title "2011英二建议信·祝贺cousin Li Ming考入大学并给出入学前准备建议" \\
-  --genre "advice" \\
+  --title "国内轿车品牌市场份额变化（2011英二）" \\
+  --genre "chart" \\
   --year "2011" \\
   --exam-type "英二" \\
-  --task-id "T2011-E2-ADV" \\
+  --task-id "T2011-E2-CHART" \\
   --file /tmp/archive.md \\
-  --metadata '{"absorbed_items": ["T1_ADV_005 gain exposure to", "T1_ADV_006 navigate path"]}'
+  --metadata '{"absorbed_items": ["M_SCENE_024 sharpen one\\'s technological edge", "T2_CHART_SEN_001 To begin with, [Agent] has..."]}'
 
 # 说明：若 --metadata 中省略 word_count，系统将自动基于 /tmp/archive.md 的正文计算词数。""")
         return
@@ -2147,6 +2150,180 @@ python3 scripts/kb_manager.py archive \\
     print(f"[OK] 范文已成功归档至: {target_file}")
     print(f"[OK] 题目台账已同步至: {ledger_desc}")
     return target_file
+
+def cmd_history(args):
+    """查询学员已归档的历史作文及吸收资产。"""
+    paths = get_paths(ensure=False)
+
+    candidate_ledgers = []
+    user_root = paths.get("user_root")
+    for cand in [
+        paths.get("tasks"),
+        paths.get("user_task2_tasks"),
+        paths.get("tasks_legacy"),
+        user_root / "task2" / "tasks.jsonl" if user_root else None,
+        user_root / "tasks.jsonl" if user_root else None,
+        user_root / "user_brain" / "task2" / "tasks.jsonl" if user_root else None,
+        user_root / "user_brain" / "tasks.jsonl" if user_root else None,
+    ]:
+        if cand and cand.exists():
+            rp = cand.resolve()
+            if rp not in candidate_ledgers:
+                candidate_ledgers.append(rp)
+
+    raw_tasks = []
+    seen_task_ids = set()
+    for ledger in candidate_ledgers:
+        for rec in read_jsonl(ledger):
+            tid = rec.get("task_id")
+            if tid and tid in seen_task_ids:
+                continue
+            if tid:
+                seen_task_ids.add(tid)
+            raw_tasks.append(rec)
+
+    # 如果台账为空，但 archives_dir 存在 markdown 文件，扫描并解析
+    archives_dir = paths.get("archives")
+    if not raw_tasks and archives_dir and archives_dir.exists():
+        md_files = sorted(archives_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for mf in md_files:
+            try:
+                text = mf.read_text(encoding="utf-8")
+                task_id = mf.stem
+                m_tid = re.search(r"-\s*\*\*任务编号\*\*：\s*(.+)", text)
+                if m_tid:
+                    task_id = m_tid.group(1).strip()
+                genre = "general"
+                m_genre = re.search(r"-\s*\*\*文类\*\*：\s*(.+)", text)
+                if m_genre:
+                    genre = m_genre.group(1).strip()
+                year = ""
+                m_year = re.search(r"-\s*\*\*年份\*\*：\s*(.+)", text)
+                if m_year:
+                    year = m_year.group(1).strip()
+                exam_type = ""
+                m_et = re.search(r"-\s*\*\*试卷类型\*\*：\s*(.+)", text)
+                if m_et:
+                    exam_type = m_et.group(1).strip()
+                prompt = mf.stem
+                m_title = re.search(r"^#\s+(.+)", text, re.MULTILINE)
+                if m_title:
+                    prompt = m_title.group(1).strip()
+                raw_tasks.append({
+                    "task_id": task_id,
+                    "date": datetime.datetime.fromtimestamp(mf.stat().st_mtime).strftime("%Y-%m-%d"),
+                    "exam_type": exam_type,
+                    "year": year,
+                    "genre": genre,
+                    "prompt": prompt,
+                    "status": "已归档",
+                    "archived_path": str(mf).replace("\\", "/"),
+                    "created_at": datetime.datetime.fromtimestamp(mf.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                })
+            except Exception:
+                pass
+
+    def sort_key(t):
+        return t.get("created_at") or t.get("date") or ""
+    raw_tasks.sort(key=sort_key, reverse=True)
+
+    filtered = []
+    req_genre = normalize_genre(args.genre) if getattr(args, "genre", None) and str(args.genre).lower() != "all" else None
+    req_exam_type = getattr(args, "exam_type", None)
+    req_year = str(args.year).strip() if getattr(args, "year", None) else None
+
+    for t in raw_tasks:
+        if req_genre and normalize_genre(t.get("genre", "")) != req_genre:
+            continue
+        if req_year and str(t.get("year", "")).strip() != req_year:
+            continue
+        if req_exam_type:
+            et = normalize_exam_type(t.get("exam_type", ""))
+            if et != normalize_exam_type(req_exam_type) and str(t.get("exam_type", "")) != req_exam_type:
+                continue
+        filtered.append(t)
+
+    limit = int(args.limit) if getattr(args, "limit", None) is not None else 1
+    selected = filtered[:limit]
+
+    results = []
+    for t in selected:
+        item_data = dict(t)
+        arch_path_str = t.get("archived_path")
+        arch_path = None
+        if arch_path_str:
+            p = Path(arch_path_str)
+            if p.exists():
+                arch_path = p
+        if not arch_path and archives_dir and archives_dir.exists():
+            for cand_f in archives_dir.glob("*.md"):
+                if t.get("task_id") and t["task_id"] in cand_f.name:
+                    arch_path = cand_f
+                    break
+
+        essay_body = ""
+        absorbed_items = []
+        if arch_path and arch_path.exists():
+            try:
+                md_content = arch_path.read_text(encoding="utf-8")
+                if "## 本篇吸收沉淀的知识点" in md_content:
+                    parts = md_content.split("## 本篇吸收沉淀的知识点", 1)[1]
+                    if "## 终版高分范文" in parts:
+                        sub = parts.split("## 终版高分范文", 1)[0]
+                    else:
+                        sub = parts.split("---", 1)[0]
+                    for line in sub.splitlines():
+                        line = line.strip()
+                        if line.startswith("- "):
+                            absorbed_items.append(line[2:].strip())
+
+                if "## 终版高分范文" in md_content:
+                    essay_body = md_content.split("## 终版高分范文", 1)[1].strip()
+                else:
+                    essay_body = md_content.strip()
+            except Exception:
+                pass
+
+        item_data["essay_body"] = essay_body
+        item_data["absorbed_items"] = absorbed_items
+        results.append(item_data)
+
+    if getattr(args, "json", False):
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+        return
+
+    if not results:
+        msg = "• 个人外脑暂无符合条件的已归档历史作文。"
+        if req_genre or req_year or req_exam_type:
+            msg += f" (筛选条件: genre={req_genre or 'all'}, year={req_year or 'all'}, exam_type={req_exam_type or 'all'})"
+        print(msg)
+        return
+
+    print(f"=== 学员历史归档作文 (共找到 {len(filtered)} 篇，展示前 {len(results)} 篇) ===")
+    for idx, r in enumerate(results, start=1):
+        genre_disp = r.get("genre", "general")
+        year_disp = r.get("year", "N/A")
+        et_disp = r.get("exam_type", "考研大作文")
+        prompt_disp = r.get("prompt", "无标题")
+        tid_disp = r.get("task_id", "N/A")
+        date_disp = r.get("created_at") or r.get("date", "N/A")
+        print(f"\n--- 【历史范文 #{idx}】 {year_disp} · {et_disp} · {genre_disp} ---")
+        print(f"• 任务编号: {tid_disp} | 归档时间: {date_disp}")
+        print(f"• 题目/立意: {prompt_disp}")
+        if r.get("archived_path"):
+            print(f"• 归档路径: {r['archived_path']}")
+
+        if r.get("absorbed_items"):
+            print("\n[本篇吸收沉淀知识点]:")
+            for ai in r["absorbed_items"]:
+                print(f"  • {ai}")
+
+        if getattr(args, "full", True) and r.get("essay_body"):
+            print("\n[终版高分范文正文]:")
+            for line in r["essay_body"].splitlines():
+                print(f"  {line}")
+        elif not r.get("essay_body"):
+            print("\n[范文正文]: (未找到归档文件内容)")
 
 def cmd_session(args):
     paths = get_paths(ensure=True)
@@ -3267,27 +3444,26 @@ def _settle_impl(args, state):
     """一键原子结算的实际实现。"""
     if getattr(args, "example", False):
         example_payload = {
-            "task_id": "T2012-E2-ADV",
-            "genre": "complaint",
-            "year": "2012",
-            "exam_type": "English II",
-            "title": "投诉网购电子词典（2012英二）",
+            "task_id": "T2021-E1-DRAW",
+            "genre": "drawing",
+            "year": "2021",
+            "exam_type": "English I",
+            "title": "京剧传统文化（2021英一）",
             # 顶层 essay_content 为文档化主形态；archive.content 亦被兼容
-            "essay_content": "Dear Sir or Madam,\n\n    I am writing to lodge a formal complaint regarding the electronic dictionary that I purchased from your online store on September 20th.\n\n                                        Yours faithfully,\n                                        Zhang Wei\n",
+            "essay_content": "    In the center of the cartoon stands a young boy dressed in traditional Peking Opera costumes, looking confident and proud. On the contrary, his classmates nearby are completely immersed in Western video games, seemingly oblivious to the artistic splendor before them. The dramatic contrast delivers a thought-provoking message about cultural inheritance.\n\n    A multitude of interrelated factors account for this cultural dilemma. To begin with, under the sweeping wave of globalization, contemporary youths are heavily bombarded with foreign pop culture, thereby alienating themselves from indigenous traditional heritage. Furthermore, the lack of innovative communication mediums prevents classical arts from resonating with younger generations. Evidently, this subtle visual narrative takes on a profound overtone of cultural preservation amid modern society.\n\n    To reverse this trend, concerted endeavors ought to be mobilized. On the one hand, schools should actively incorporate traditional arts into formal curriculums. On the other hand, traditional artists must embrace modern digital media to revitalize ancient art forms. Only in this way can our cultural roots continue to flourish.",
             "archive": {
                 "metadata": {
-                    "signature": "Zhang Wei",
-                    "word_count": 117,
+                    "word_count": 182,
                     "points_coverage": "100%",
-                    "advanced_patterns": ["Having done", "which-clause", "be justified in doing"]
+                    "advanced_patterns": ["thereby + v-ing", "Evidently, this subtle narrative...", "Only in this way can..."]
                 }
             },
             "batch": {
                 "status_updates": [
                     {
-                        "id": "T1_ADV_SEN_001",
-                        "status": "敢用",
-                        "note": "跨文类复用验证（ID 必须取自 query --mine 的真实输出）",
+                        "id": "T2_OVT_SEN_001",
+                        "status": "稳定",
+                        "note": "实战引申首段活用成功（ID 必须取自 query --mine 的真实输出）",
                         "independent": True
                     }
                 ],
@@ -3296,12 +3472,13 @@ def _settle_impl(args, state):
                         "target": "shared",
                         "data": {
                             "category": "phrase",
-                            "genre": "complaint",
+                            "genre": "drawing",
                             "section": "body",
-                            "register": "neutral_formal",
-                            "intent": "提供建设性的解决方案（售后交涉、回复信、建议信通用的举措承重表达）",
-                            "verb_phrase": "offer a constructive solution",
-                            "expression": "offer a constructive solution",
+                            "register": "academic_formal",
+                            "intent": "焕发古老艺术生机",
+                            "verb_phrase": "revitalize ancient art forms",
+                            "expression": "revitalize ancient art forms",
+                            "exam_band": "大纲内",
                             "mastery": "学习中"
                         }
                     },
@@ -3309,27 +3486,26 @@ def _settle_impl(args, state):
                         "target": "task2",
                         "data": {
                             "category": "functional_sentence",
-                            "genre": "complaint",
+                            "genre": "drawing",
                             "section": "opening",
-                            "register": "neutral_formal",
-                            "intent": "投诉信开篇定调：一句话交代投诉意图、商品、购买渠道与购买时间四要素",
-                            "expression": "I am writing to lodge a formal complaint regarding [Product] that I purchased from [Place] on [Date].",
+                            "register": "academic_formal",
+                            "intent": "揭示画面深层时代弦外之音",
+                            "expression": "Evidently, this subtle visual narrative takes on a profound overtone of [Theme] amid the contemporary epoch.",
                             "mastery": "敢用"
                         }
                     }
                 ]
             },
             "maimemo": {
-                "chapter": "2012英二大作文",
+                "chapter": "2021英一大作文",
                 "words": [
                     {
-                        "spelling": "express",
-                        "type": "spelling_fix",
-                        "misspelling": "expree",
-                        "sentence": "I am writing to express my dissatisfaction with the electronic dictionary.",
-                        "translation": "我写信是为了表达我对电子词典的不满。",
-                        "usage_note": "考研高频动词，表表达情感或立场",
-                        "grammar_note": "不定式作目的状语"
+                        "spelling": "overtone",
+                        "type": "advanced_vocab",
+                        "sentence": "Takes on a profound overtone of cultural preservation amid modern society.",
+                        "translation": "呈现出当代社会文化传承的深层弦外之音。",
+                        "usage_note": "考研高阶抽象名词，常搭 take on an overtone of...",
+                        "grammar_note": "介词短语作后置定语修饰 overtone"
                     }
                 ]
             }
@@ -3827,18 +4003,18 @@ def main():
     batch_epilog = """
 JSON Payload Schema for batch-update:
 {
-  "task_id": "T2011-E2-ADV",
+  "task_id": "T2021-E1-DRAW",
   "status_updates": [
-    {"id": "T1_ADV_001", "status": "学习中|敢用|稳定", "note": "...", "independent": true}
+    {"id": "T2_OVT_SEN_001", "status": "学习中|敢用|稳定", "note": "...", "independent": true}
   ],
   "new_items": [
     {
       "target": "task2",
       "data": {
         "category": "phrase|functional_sentence|structure|template|word",
-        "genre": "advice|...",
+        "genre": "drawing|chart|material|general",
         "section": "opening|body|closing",
-        "register": "neutral_formal|informal_peer",
+        "register": "academic_formal|neutral_formal",
         "intent": "中文功能意图",
         "verb_phrase": "核心动宾短语 (phrase 必填或由 expression 回退)",
         "expression": "表达文本或骨架",
@@ -3892,6 +4068,16 @@ Run 'python3 scripts/kb_manager.py archive --example' to print an example comman
     p_arch.add_argument("--metadata-file", type=str, default=None, help="File containing JSON metadata")
     p_arch.add_argument("--force", action="store_true", help="Allow duplicate ledger rows (default: upsert by task_id)")
     p_arch.add_argument("--example", action="store_true", help="Print archive command usage example and exit")
+
+    # history
+    p_hist = subparsers.add_parser("history", help="Query archived satisfaction essays and absorbed assets")
+    p_hist.add_argument("--genre", type=str, default=None, help="Carrier/genre filter (drawing, chart, material, general, all)")
+    p_hist.add_argument("--year", type=str, default=None, help="Exam year filter")
+    p_hist.add_argument("--exam-type", type=str, default=None, help="Exam type filter (1, 2, 英一, 英二, English I, English II)")
+    p_hist.add_argument("--limit", type=int, default=1, help="Max entries to return (default: 1)")
+    p_hist.add_argument("--full", action="store_true", default=True, help="Include full essay text (default: True)")
+    p_hist.add_argument("--brief", dest="full", action="store_false", help="Omit essay text and show metadata only")
+    p_hist.add_argument("--json", action="store_true", help="Output result as JSON")
 
     # session
     p_sess = subparsers.add_parser("session", help="Record session version progression")
@@ -3963,6 +4149,8 @@ Run 'python3 scripts/kb_manager.py archive --example' to print an example comman
         cmd_update_status(args)
     elif args.command == "archive":
         cmd_archive(args)
+    elif args.command == "history":
+        cmd_history(args)
     elif args.command == "session":
         cmd_session(args)
     elif args.command == "cleanup":
